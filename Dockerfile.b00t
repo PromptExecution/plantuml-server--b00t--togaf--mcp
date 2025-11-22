@@ -9,7 +9,7 @@ ARG MCP_SERVER_VERSION=0.1.11
 # ============================================================================
 # Stage 1: Build PlantUML Server (Java)
 # ============================================================================
-FROM eclipse-temurin:17-jre-alpine AS plantuml-builder
+FROM docker.io/eclipse-temurin:17-jre-alpine AS plantuml-builder
 
 ARG PLANTUML_VERSION
 WORKDIR /app
@@ -22,7 +22,7 @@ RUN wget -O plantuml.jar \
 # ============================================================================
 # Stage 2: Prepare MCP Server (Node.js)
 # ============================================================================
-FROM node:${NODE_VERSION} AS mcp-builder
+FROM docker.io/library/node:${NODE_VERSION} AS mcp-builder
 
 ARG MCP_SERVER_VERSION
 WORKDIR /mcp
@@ -34,7 +34,7 @@ RUN npm install -g plantuml-mcp-server@${MCP_SERVER_VERSION} && \
 # ============================================================================
 # Stage 3: Runtime Image (Java + Node.js + Supervisord)
 # ============================================================================
-FROM eclipse-temurin:17-jre-alpine
+FROM docker.io/eclipse-temurin:17-jre-alpine
 
 # Install Node.js runtime and supervisor for process management
 RUN apk add --no-cache \
