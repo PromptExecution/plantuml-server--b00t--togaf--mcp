@@ -1,0 +1,92 @@
+# Dockerfile.b00t - b00t-enhanced PlantUML Server with MCP Integration
+# Multi-stage build combining PlantUML Server (Java) + MCP Server (Node.js)
+# Managed by supervisord for concurrent service execution
+
+ARG PLANTUML_VERSION=1.2024.3
+ARG NODE_VERSION=18-alpine
+ARG MCP_SERVER_VERSION=0.1.11
+
+# ============================================================================
+# Stage 1: Build PlantUML Server (Java)
+# ============================================================================
+FROM eclipse-temurin:17-jre-alpine AS plantuml-builder
+
+ARG PLANTUML_VERSION
+WORKDIR /app
+
+# Download specific PlantUML version
+RUN wget -O plantuml.jar \
+    "https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar" \
+    && chmod 644 plantuml.jar
+
+# ============================================================================
+# Stage 2: Prepare MCP Server (Node.js)
+# ============================================================================
+FROM node:${NODE_VERSION} AS mcp-builder
+
+ARG MCP_SERVER_VERSION
+WORKDIR /mcp
+
+# Install plantuml-mcp-server globally
+RUN npm install -g plantuml-mcp-server@${MCP_SERVER_VERSION} && \
+    npm cache clean --force
+
+# ============================================================================
+# Stage 3: Runtime Image (Java + Node.js + Supervisord)
+# ============================================================================
+FROM eclipse-temurin:17-jre-alpine
+
+# Install Node.js runtime and supervisor for process management
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    supervisor \
+    wget \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Create application directories
+RUN mkdir -p /opt/plantuml /opt/mcp /var/log/supervisor /diagrams
+
+# Copy PlantUML JAR from builder stage
+COPY --from=plantuml-builder /app/plantuml.jar /opt/plantuml/plantuml.jar
+
+# Copy MCP server from builder stage
+COPY --from=mcp-builder /usr/local/lib/node_modules/plantuml-mcp-server \
+    /usr/local/lib/node_modules/plantuml-mcp-server
+
+# Create symlink for MCP server binary
+RUN ln -s /usr/local/lib/node_modules/plantuml-mcp-server/bin/plantuml-mcp-server \
+    /usr/local/bin/plantuml-mcp-server
+
+# Copy supervisord configuration
+COPY supervisord.conf /etc/supervisord.conf
+
+# Environment configuration
+ENV PLANTUML_SERVER_URL=http://localhost:8080/plantuml \
+    PLANTUML_LIMIT_SIZE=16384 \
+    PLANTUML_SECURITY_PROFILE=INTERNET \
+    MCP_SERVER_PORT=3000 \
+    JAVA_OPTS="-Djava.net.preferIPv4Stack=true -Xmx512m"
+
+# Expose ports
+# 8080: PlantUML HTTP server
+# 3000: MCP server (if using HTTP transport)
+EXPOSE 8080 3000
+
+# Health check for PlantUML server availability
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://localhost:8080/plantuml || exit 1
+
+# Volume for optional diagram persistence
+VOLUME ["/diagrams"]
+
+# Labels for container metadata
+LABEL org.opencontainers.image.title="PlantUML Server b00t" \
+      org.opencontainers.image.description="PlantUML Server with integrated MCP server for b00t TOGAF workflows" \
+      org.opencontainers.image.vendor="PromptExecution" \
+      org.opencontainers.image.source="https://github.com/PromptExecution/plantuml-server--b00t--togaf--mcp" \
+      org.opencontainers.image.licenses="GPL-3.0"
+
+# Start supervisord to manage both PlantUML and MCP servers
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf", "-n"]
