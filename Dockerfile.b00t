@@ -56,8 +56,9 @@ COPY --from=mcp-builder /usr/local/lib/node_modules/plantuml-mcp-server \
     /usr/local/lib/node_modules/plantuml-mcp-server
 
 # Create symlink for MCP server binary
-RUN ln -s /usr/local/lib/node_modules/plantuml-mcp-server/bin/plantuml-mcp-server \
-    /usr/local/bin/plantuml-mcp-server
+RUN ln -s /usr/local/lib/node_modules/plantuml-mcp-server/dist/plantuml-mcp-server.js \
+    /usr/local/bin/plantuml-mcp-server && \
+    chmod +x /usr/local/bin/plantuml-mcp-server
 
 # Copy supervisord configuration
 COPY supervisord.conf /etc/supervisord.conf
