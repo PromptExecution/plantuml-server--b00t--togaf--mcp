@@ -63,9 +63,6 @@ impl PlantUMLExecutor {
             source.len()
         );
 
-        // Create temporary directory for PlantUML output (unused but kept for future file-based mode)
-        let _temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
-
         // Write source to stdin, read from stdout (pipe mode)
         let mut child = Command::new("java")
             .args(&[
