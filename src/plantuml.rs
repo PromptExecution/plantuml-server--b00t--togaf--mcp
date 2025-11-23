@@ -70,7 +70,9 @@ impl PlantUMLExecutor {
         let mut child = Command::new("java")
             .args(&[
                 "-jar",
-                self.jar_path.to_str().unwrap(),
+                self.jar_path
+                    .to_str()
+                    .context("PlantUML JAR path is not valid UTF-8")?,
                 format.as_flag(),
                 "-pipe", // Read from stdin, write to stdout
                 "-charset",
