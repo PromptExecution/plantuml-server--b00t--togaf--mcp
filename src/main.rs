@@ -8,8 +8,8 @@ mod routes;
 
 use anyhow::Result;
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 use std::net::SocketAddr;
 use tower_http::{
@@ -36,19 +36,15 @@ async fn main() -> Result<()> {
         // Health check endpoint
         .route("/health", get(routes::health_check))
         .route("/plantuml/health", get(routes::health_check))
-
         // PlantUML generation endpoints
         .route("/plantuml/svg", post(routes::generate_svg))
         .route("/plantuml/png", post(routes::generate_png))
         .route("/plantuml/txt", post(routes::generate_txt))
-
         // Encoded diagram URLs (PlantUML standard)
         .route("/plantuml/svg/:encoded", get(routes::render_encoded_svg))
         .route("/plantuml/png/:encoded", get(routes::render_encoded_png))
-
         // Info endpoint
         .route("/", get(routes::info))
-
         // CORS layer for web access
         .layer(
             CorsLayer::new()

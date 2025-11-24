@@ -4,11 +4,11 @@
 
 use crate::plantuml::{DiagramFormat, PlantUMLExecutor};
 use axum::{
+    Json,
     body::Bytes,
     extract::Path,
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
