@@ -36,6 +36,9 @@ base64 = "0.22"
 flate2 = "1.0"
 
 # b00t ecosystem integration (via path to parent workspace)
+# The following dependency is for integration with the b00t ecosystem.
+# Uncomment the line below if building as part of the parent workspace where
+# the '../b00t-ipc' crate exists. Otherwise, leave it commented to avoid build errors.
 # b00t-ipc = { path = "../b00t-ipc", optional = true }
 
 [lints]
