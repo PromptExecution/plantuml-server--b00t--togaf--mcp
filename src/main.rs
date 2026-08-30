@@ -9,6 +9,7 @@ mod routes;
 use anyhow::Result;
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
 use std::net::SocketAddr;
@@ -45,6 +46,10 @@ async fn main() -> Result<()> {
         .route("/plantuml/png/:encoded", get(routes::render_encoded_png))
         // Info endpoint
         .route("/", get(routes::info))
+        // Each request spawns its own JVM subprocess with no pooling, so an
+        // unbounded request body is a cheap resource-exhaustion vector on
+        // top of the render timeout in plantuml.rs.
+        .layer(DefaultBodyLimit::max(1_048_576))
         // CORS layer for web access
         .layer(
             CorsLayer::new()

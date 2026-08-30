@@ -16,48 +16,17 @@ WORKDIR /build
 # Install build dependencies
 RUN apk add --no-cache musl-dev openssl-dev pkgconfig
 
-# Copy Rust project files
+# Copy Rust project files. Cargo.toml is now committed as a standalone,
+# non-workspace-inheriting manifest (see repo root) — no longer regenerated
+# inline here, which had silently drifted from it (extra unused deps,
+# different dependency set) since neither was ever validated against the
+# other.
+COPY Cargo.toml ./
+COPY Cargo.lock ./
 COPY src ./src
 
-# Create standalone Cargo.toml (without workspace inheritance)
-RUN printf '[package]\n\
-name = "plantuml-server-rust"\n\
-version = "0.7.30"\n\
-edition = "2021"\n\
-authors = ["Brian Horakh <brian@promptexecution.com>"]\n\
-license = "GPL-3.0"\n\
-\n\
-[dependencies]\n\
-# HTTP server\n\
-axum = "0.7"\n\
-tokio = { version = "1", features = ["full"] }\n\
-tower = "0.4"\n\
-tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }\n\
-\n\
-# Serialization\n\
-serde = { version = "1.0", features = ["derive"] }\n\
-serde_json = "1.0"\n\
-\n\
-# Error handling\n\
-anyhow = "1.0"\n\
-thiserror = "1.0"\n\
-\n\
-# Logging\n\
-tracing = "0.1"\n\
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }\n\
-\n\
-# Temp files\n\
-tempfile = "3.8"\n\
-\n\
-# HTTP client (for health checks)\n\
-reqwest = { version = "0.12", features = ["json"] }\n\
-\n\
-# PlantUML URL encoding/decoding\n\
-base64 = "0.22"\n\
-flate2 = "1.0"\n' > Cargo.toml
-
 # Build release binary
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # ============================================================================
 # Stage 2: Download PlantUML JAR

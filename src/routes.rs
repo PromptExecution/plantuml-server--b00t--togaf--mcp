@@ -181,17 +181,23 @@ fn decode_plantuml(encoded: &str) -> anyhow::Result<String> {
 
     let base64_str: String = base64_chars.into_iter().collect();
 
-    // Decode base64
+    // Decode base64. PlantUML's encoder never emits '=' padding (the source
+    // strings aren't guaranteed to be a multiple of 4 chars), so the padded
+    // STANDARD engine fails with "Incorrect padding" on most real inputs.
     use base64::Engine;
-    let compressed = base64::engine::general_purpose::STANDARD
+    let compressed = base64::engine::general_purpose::STANDARD_NO_PAD
         .decode(base64_str)
         .map_err(|e| anyhow::anyhow!("Base64 decode failed: {}", e))?;
 
-    // Decompress using flate2 (zlib/deflate)
-    use flate2::read::ZlibDecoder;
+    // Decompress using raw DEFLATE — PlantUML's reference encoder does
+    // `zlib.compress(text)[2:-4]`, explicitly stripping the 2-byte zlib
+    // header and 4-byte Adler-32 trailer before encoding. A ZlibDecoder
+    // expects that framing to still be present and fails with "incorrect
+    // header check" on every real-world encoded PlantUML URL.
+    use flate2::read::DeflateDecoder;
     use std::io::Read;
 
-    let mut decoder = ZlibDecoder::new(&compressed[..]);
+    let mut decoder = DeflateDecoder::new(&compressed[..]);
     let mut source = String::new();
     decoder
         .read_to_string(&mut source)
@@ -206,20 +212,17 @@ mod tests {
 
     #[test]
     fn test_decode_plantuml_simple() {
-        // Example encoded diagram: @startuml\nAlice -> Bob: Hello\n@enduml
-        // This is a placeholder - actual encoding would need to be verified
-        // against PlantUML's encoding implementation
-        let encoded = "SyfFKj2rKt3CoKnELR1Io4ZDoSa70000";
-        let result = decode_plantuml(encoded);
+        // Generated via PlantUML's reference encoding: zlib-compress at
+        // level 9, strip the 2-byte header + 4-byte Adler-32 trailer (raw
+        // DEFLATE), then base64 with PlantUML's alphabet, unpadded.
+        let encoded = "SoWkIImgAStDuNBCoKnELT2rKt3AJx9Iy4ZDoSddSaZDIm790G0";
+        let source = decode_plantuml(encoded).expect("known-good encoding must decode");
+        assert_eq!(source, "@startuml\nAlice -> Bob: Hello\n@enduml\n");
+    }
 
-        // We expect either success or a specific error
-        // The actual test would need a known good encoding
-        match result {
-            Ok(s) => assert!(!s.is_empty()),
-            Err(_) => {
-                // Expected for this placeholder encoding
-                // Real test would use verified encoding
-            }
-        }
+    #[test]
+    fn test_decode_plantuml_invalid_character_errors() {
+        // '!' is not in PlantUML's base64 alphabet.
+        assert!(decode_plantuml("not!valid").is_err());
     }
 }

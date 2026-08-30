@@ -5,8 +5,14 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+
+/// Wall-clock limit on a single PlantUML render. Bounds resource use against
+/// pathological diagrams and (given `PLANTUML_SECURITY_PROFILE=INTERNET`
+/// still permits remote `!includeurl`) a slow/unreachable fetch target.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Output format for PlantUML diagrams
 #[derive(Debug, Clone, Copy)]
@@ -64,6 +70,14 @@ impl PlantUMLExecutor {
         );
 
         // Write source to stdin, read from stdout (pipe mode)
+        //
+        // PLANTUML_SECURITY_PROFILE is set here (not just in the Dockerfile's
+        // ENV) so it travels with the code: any deployment path that doesn't
+        // reproduce that exact Dockerfile ENV would otherwise silently fall
+        // back to PlantUML's default UNSECURE profile (arbitrary local file
+        // read + arbitrary URL fetch via !include/!includeurl). INTERNET
+        // still permits remote !includeurl — that residual SSRF surface is
+        // accepted, not eliminated, by this setting.
         let mut child = Command::new("java")
             .args(&[
                 "-jar",
@@ -75,9 +89,17 @@ impl PlantUMLExecutor {
                 "-charset",
                 "UTF-8",
             ])
+            .env(
+                "PLANTUML_SECURITY_PROFILE",
+                std::env::var("PLANTUML_SECURITY_PROFILE").unwrap_or_else(|_| "INTERNET".into()),
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // On timeout below, the wait_with_output() future (which owns
+            // `child`) is dropped — kill_on_drop ensures that actually kills
+            // the JVM instead of leaving it running as an orphan.
+            .kill_on_drop(true)
             .spawn()
             .context("Failed to spawn PlantUML process")?;
 
@@ -91,11 +113,19 @@ impl PlantUMLExecutor {
             drop(stdin); // Close stdin to signal EOF
         }
 
-        // Wait for process to complete
-        let output = child
-            .wait_with_output()
-            .await
-            .context("Failed to wait for PlantUML process")?;
+        // Wait for process to complete, bounded so a pathological diagram
+        // (or a slow/unreachable !includeurl target) can't hang forever.
+        // Each request spawns its own JVM with no pooling, so an unbounded
+        // wait here is a trivial resource-exhaustion vector.
+        let output = match tokio::time::timeout(RENDER_TIMEOUT, child.wait_with_output()).await {
+            Ok(result) => result.context("Failed to wait for PlantUML process")?,
+            Err(_) => {
+                anyhow::bail!(
+                    "PlantUML process exceeded {}s timeout",
+                    RENDER_TIMEOUT.as_secs()
+                );
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
